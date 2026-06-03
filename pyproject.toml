@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oss-repo-launch-doctor"
+version = "0.1.0"
+description = "CLI checks for open source repository launch readiness."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "OSS Repo Launch Doctor contributors"}]
+keywords = ["oss", "repository", "cli", "github"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+]
+
+[project.scripts]
+oss-repo-launch-doctor = "oss_repo_launch_doctor.doctor:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["oss_repo_launch_doctor*"]
+
+[project.urls]
+Homepage = "https://github.com/mySebbe/oss-repo-launch-doctor"
+Repository = "https://github.com/mySebbe/oss-repo-launch-doctor"
+Issues = "https://github.com/mySebbe/oss-repo-launch-doctor/issues"
+Changelog = "https://github.com/mySebbe/oss-repo-launch-doctor/blob/main/CHANGELOG.md"
+
+[tool.setuptools.package-data]
+"oss_repo_launch_doctor" = ["py.typed"]
