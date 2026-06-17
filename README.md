@@ -13,6 +13,11 @@
 
 It emits a score out of 100 plus targeted suggestions.
 
+## 0.1.1 Highlights
+
+- Reports now include optional launch maturity checks without changing the core readiness score.
+- Optional checks cover Code of Conduct, funding metadata, and changelog files.
+
 ## Usage
 
 ```bash
