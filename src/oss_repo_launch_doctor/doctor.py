@@ -24,6 +24,7 @@ class DoctorReport:
     path: str
     score: int
     checks: dict[str, CheckResult]
+    optional_checks: dict[str, CheckResult]
     suggestions: list[str]
     metadata: dict[str, str]
 
@@ -123,11 +124,32 @@ def analyze_repository(path: str | Path) -> DoctorReport:
             "Add a [project] table with at least name and version.",
         ),
     }
+    optional_checks = {
+        "code_of_conduct": _check(
+            "Code of conduct",
+            _first_existing(root, ["CODE_OF_CONDUCT.md", ".github/CODE_OF_CONDUCT.md"]),
+            0,
+            "Add CODE_OF_CONDUCT.md so contributors know expected community behavior.",
+        ),
+        "funding": _check(
+            "Funding metadata",
+            _first_existing(root, [".github/FUNDING.yml", ".github/FUNDING.yaml"]),
+            0,
+            "Add .github/FUNDING.yml if the project accepts sponsorship.",
+        ),
+        "changelog": _check(
+            "Changelog",
+            _first_existing(root, ["CHANGELOG.md", "CHANGES.md", "HISTORY.md"]),
+            0,
+            "Add CHANGELOG.md so users can understand releases.",
+        ),
+    }
     earned = sum(check.weight for check in checks.values() if check.present)
     total = sum(check.weight for check in checks.values())
     suggestions = [check.suggestion for check in checks.values() if not check.present]
+    suggestions.extend(check.suggestion for check in optional_checks.values() if not check.present)
     score = round((earned / total) * 100) if total else 0
-    return DoctorReport(str(root), score, checks, suggestions, _read_project_metadata(root))
+    return DoctorReport(str(root), score, checks, optional_checks, suggestions, _read_project_metadata(root))
 
 
 def format_text_report(report: DoctorReport) -> str:
@@ -141,6 +163,11 @@ def format_text_report(report: DoctorReport) -> str:
     for check in report.checks.values():
         mark = "OK" if check.present else "MISSING"
         lines.append(f"- {mark}: {check.name} ({check.detail})")
+    if report.optional_checks:
+        lines.extend(["", "Optional checks:"])
+        for check in report.optional_checks.values():
+            mark = "OK" if check.present else "RECOMMENDED"
+            lines.append(f"- {mark}: {check.name} ({check.detail})")
     if report.metadata:
         lines.extend(["", "Metadata:"])
         for key, value in sorted(report.metadata.items()):
@@ -158,6 +185,7 @@ def _to_jsonable(report: DoctorReport) -> dict[str, object]:
         "path": report.path,
         "score": report.score,
         "checks": {key: asdict(value) for key, value in report.checks.items()},
+        "optional_checks": {key: asdict(value) for key, value in report.optional_checks.items()},
         "suggestions": report.suggestions,
         "metadata": report.metadata,
     }
