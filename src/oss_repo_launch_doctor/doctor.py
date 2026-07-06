@@ -196,6 +196,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("path", nargs="?", default=".", help="Repository path to inspect.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    parser.add_argument(
+        "--min-score",
+        type=int,
+        default=0,
+        help="Return exit code 1 when the readiness score is below this value.",
+    )
     args = parser.parse_args(argv)
 
     report = analyze_repository(args.path)
@@ -203,4 +209,4 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(_to_jsonable(report), indent=2, sort_keys=True))
     else:
         print(format_text_report(report), end="")
-    return 0
+    return 1 if report.score < max(0, args.min_score) else 0

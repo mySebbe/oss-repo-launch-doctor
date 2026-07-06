@@ -79,6 +79,24 @@ class LaunchDoctorTest(unittest.TestCase):
         self.assertIn("optional_checks", parsed)
         self.assertIn("suggestions", parsed)
 
+    def test_cli_min_score_returns_nonzero_when_score_is_too_low(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+
+            result = subprocess.run(
+                [sys.executable, "-m", "oss_repo_launch_doctor", str(repo), "--json", "--min-score", "90"],
+                check=False,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertLess(json.loads(result.stdout)["score"], 90)
+
     def test_format_text_report_lists_suggestions(self):
         with tempfile.TemporaryDirectory() as tmp:
             report = analyze_repository(Path(tmp))
