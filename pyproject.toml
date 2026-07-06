@@ -4,17 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oss-repo-launch-doctor"
-version = "0.1.1"
+version = "0.1.2"
 description = "CLI checks for open source repository launch readiness."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
 authors = [{name = "OSS Repo Launch Doctor contributors"}]
 keywords = ["oss", "repository", "cli", "github"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
 ]

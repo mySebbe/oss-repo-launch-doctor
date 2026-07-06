@@ -13,16 +13,17 @@
 
 It emits a score out of 100 plus targeted suggestions.
 
-## 0.1.1 Highlights
+## 0.1.2 Highlights
 
-- Reports now include optional launch maturity checks without changing the core readiness score.
-- Optional checks cover Code of Conduct, funding metadata, and changelog files.
+- CI and release workflows can now enforce a readiness floor with `--min-score`.
+- The command exits `1` when the repository score falls below the configured threshold.
 
 ## Usage
 
 ```bash
 python -m oss_repo_launch_doctor /path/to/repo
 python -m oss_repo_launch_doctor /path/to/repo --json
+python -m oss_repo_launch_doctor /path/to/repo --min-score 90
 ```
 
 Installed script:
