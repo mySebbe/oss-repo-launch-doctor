@@ -24,7 +24,13 @@ It emits a score out of 100 plus targeted suggestions.
 python -m oss_repo_launch_doctor /path/to/repo
 python -m oss_repo_launch_doctor /path/to/repo --json
 python -m oss_repo_launch_doctor /path/to/repo --min-score 90
+python -m oss_repo_launch_doctor /path/to/repo --fail-on-security
 ```
+
+The security gate checks that remote GitHub Actions use immutable 40-character commit SHAs,
+every workflow declares explicit top-level permissions, and Dependabot covers both pip and GitHub
+Actions. Security checks are included in text and JSON reports without changing the historical
+launch-readiness score; `--fail-on-security` turns them into a CI gate.
 
 Installed script:
 

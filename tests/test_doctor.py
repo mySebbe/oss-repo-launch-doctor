@@ -27,7 +27,16 @@ class LaunchDoctorTest(unittest.TestCase):
             )
             workflow = repo / ".github" / "workflows"
             workflow.mkdir(parents=True)
-            (workflow / "test.yml").write_text("name: tests\n", encoding="utf-8")
+            (workflow / "test.yml").write_text(
+                "name: tests\npermissions:\n  contents: read\njobs:\n  test:\n"
+                "    steps:\n      - uses: actions/checkout@" + "a" * 40 + "\n",
+                encoding="utf-8",
+            )
+            (repo / ".github" / "dependabot.yml").write_text(
+                'version: 2\nupdates:\n  - package-ecosystem: "pip"\n'
+                '  - package-ecosystem: "github-actions"\n',
+                encoding="utf-8",
+            )
             (repo / ".github" / "FUNDING.yml").write_text("github: demo\n", encoding="utf-8")
             issue_templates = repo / ".github" / "ISSUE_TEMPLATE"
             issue_templates.mkdir(parents=True)
@@ -40,6 +49,7 @@ class LaunchDoctorTest(unittest.TestCase):
         self.assertTrue(report.checks["readme"].present)
         self.assertTrue(report.optional_checks["changelog"].present)
         self.assertEqual(report.metadata["project_name"], "demo")
+        self.assertTrue(all(check.present for check in report.security_checks.values()))
 
     def test_analyze_repository_suggests_missing_launch_files(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -78,6 +88,7 @@ class LaunchDoctorTest(unittest.TestCase):
         self.assertIn("score", parsed)
         self.assertIn("optional_checks", parsed)
         self.assertIn("suggestions", parsed)
+        self.assertIn("security_checks", parsed)
 
     def test_cli_min_score_returns_nonzero_when_score_is_too_low(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -106,6 +117,40 @@ class LaunchDoctorTest(unittest.TestCase):
         self.assertIn("Suggestions", output)
         self.assertIn("Optional checks", output)
         self.assertIn("README", output)
+        self.assertIn("Security checks", output)
+
+    def test_cli_fail_on_security_rejects_mutable_actions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            workflow = repo / ".github" / "workflows"
+            workflow.mkdir(parents=True)
+            (workflow / "test.yml").write_text(
+                "name: test\npermissions:\n  contents: read\njobs:\n  test:\n"
+                "    steps:\n      - uses: actions/checkout@v7\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "oss_repo_launch_doctor",
+                    str(repo),
+                    "--json",
+                    "--fail-on-security",
+                ],
+                check=False,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        data = json.loads(result.stdout)
+        self.assertFalse(data["security_checks"]["immutable_actions"]["present"])
+        self.assertIn("actions/checkout@v7", data["security_checks"]["immutable_actions"]["detail"])
 
 
 if __name__ == "__main__":

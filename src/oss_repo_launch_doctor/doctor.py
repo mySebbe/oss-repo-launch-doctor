@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import tomllib
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -25,8 +26,13 @@ class DoctorReport:
     score: int
     checks: dict[str, CheckResult]
     optional_checks: dict[str, CheckResult]
+    security_checks: dict[str, CheckResult]
     suggestions: list[str]
     metadata: dict[str, str]
+
+
+_ACTION_REF_RE = re.compile(r"^\s*-\s+uses:\s*([^\s#]+)", re.MULTILINE)
+_IMMUTABLE_ACTION_RE = re.compile(r"^[^/\s]+/[^@\s]+@[0-9a-fA-F]{40}$")
 
 
 def _first_existing(root: Path, names: Iterable[str]) -> Path | None:
@@ -70,6 +76,84 @@ def _read_project_metadata(root: Path) -> dict[str, str]:
         if isinstance(value, str):
             metadata[f"project_{key}" if key == "name" else key] = value
     return metadata
+
+
+def _workflow_files(root: Path) -> list[Path]:
+    workflows = root / ".github" / "workflows"
+    if not workflows.is_dir():
+        return []
+    return sorted([*workflows.glob("*.yml"), *workflows.glob("*.yaml")])
+
+
+def _workflow_action_pins(root: Path) -> CheckResult:
+    workflows = _workflow_files(root)
+    mutable: list[str] = []
+    for workflow in workflows:
+        try:
+            text = workflow.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            mutable.append(f"{workflow.name}: unreadable")
+            continue
+        for action in _ACTION_REF_RE.findall(text):
+            if action.startswith("./") or action.startswith("docker://"):
+                continue
+            if not _IMMUTABLE_ACTION_RE.fullmatch(action):
+                mutable.append(f"{workflow.name}: {action}")
+    present = bool(workflows) and not mutable
+    detail = "all third-party actions use commit SHAs" if present else ", ".join(mutable) or "no workflows"
+    return CheckResult(
+        name="Immutable action references",
+        present=present,
+        detail=detail,
+        weight=0,
+        suggestion="Pin every remote GitHub Action to a full 40-character commit SHA.",
+    )
+
+
+def _workflow_permissions(root: Path) -> CheckResult:
+    workflows = _workflow_files(root)
+    missing: list[str] = []
+    for workflow in workflows:
+        try:
+            lines = workflow.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            missing.append(f"{workflow.name}: unreadable")
+            continue
+        if not any(line.startswith("permissions:") for line in lines):
+            missing.append(workflow.name)
+    present = bool(workflows) and not missing
+    detail = "explicit top-level permissions in every workflow" if present else ", ".join(missing) or "no workflows"
+    return CheckResult(
+        name="Explicit workflow permissions",
+        present=present,
+        detail=detail,
+        weight=0,
+        suggestion="Declare least-privilege top-level permissions in every GitHub Actions workflow.",
+    )
+
+
+def _dependabot_coverage(root: Path) -> CheckResult:
+    config = root / ".github" / "dependabot.yml"
+    if not config.is_file():
+        config = root / ".github" / "dependabot.yaml"
+    ecosystems: set[str] = set()
+    if config.is_file():
+        try:
+            text = config.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            text = ""
+        ecosystems = set(re.findall(r"package-ecosystem:\s*[\"']?([\w-]+)", text))
+    required = {"pip", "github-actions"}
+    missing = sorted(required - ecosystems)
+    present = not missing
+    detail = "pip and GitHub Actions covered" if present else "missing: " + ", ".join(missing)
+    return CheckResult(
+        name="Dependabot coverage",
+        present=present,
+        detail=detail,
+        weight=0,
+        suggestion="Configure Dependabot for both pip and GitHub Actions dependencies.",
+    )
 
 
 def analyze_repository(path: str | Path) -> DoctorReport:
@@ -144,12 +228,26 @@ def analyze_repository(path: str | Path) -> DoctorReport:
             "Add CHANGELOG.md so users can understand releases.",
         ),
     }
+    security_checks = {
+        "immutable_actions": _workflow_action_pins(root),
+        "workflow_permissions": _workflow_permissions(root),
+        "dependabot_coverage": _dependabot_coverage(root),
+    }
     earned = sum(check.weight for check in checks.values() if check.present)
     total = sum(check.weight for check in checks.values())
     suggestions = [check.suggestion for check in checks.values() if not check.present]
     suggestions.extend(check.suggestion for check in optional_checks.values() if not check.present)
+    suggestions.extend(check.suggestion for check in security_checks.values() if not check.present)
     score = round((earned / total) * 100) if total else 0
-    return DoctorReport(str(root), score, checks, optional_checks, suggestions, _read_project_metadata(root))
+    return DoctorReport(
+        str(root),
+        score,
+        checks,
+        optional_checks,
+        security_checks,
+        suggestions,
+        _read_project_metadata(root),
+    )
 
 
 def format_text_report(report: DoctorReport) -> str:
@@ -167,6 +265,11 @@ def format_text_report(report: DoctorReport) -> str:
         lines.extend(["", "Optional checks:"])
         for check in report.optional_checks.values():
             mark = "OK" if check.present else "RECOMMENDED"
+            lines.append(f"- {mark}: {check.name} ({check.detail})")
+    if report.security_checks:
+        lines.extend(["", "Security checks:"])
+        for check in report.security_checks.values():
+            mark = "OK" if check.present else "RISK"
             lines.append(f"- {mark}: {check.name} ({check.detail})")
     if report.metadata:
         lines.extend(["", "Metadata:"])
@@ -186,6 +289,7 @@ def _to_jsonable(report: DoctorReport) -> dict[str, object]:
         "score": report.score,
         "checks": {key: asdict(value) for key, value in report.checks.items()},
         "optional_checks": {key: asdict(value) for key, value in report.optional_checks.items()},
+        "security_checks": {key: asdict(value) for key, value in report.security_checks.items()},
         "suggestions": report.suggestions,
         "metadata": report.metadata,
     }
@@ -202,6 +306,11 @@ def main(argv: list[str] | None = None) -> int:
         default=0,
         help="Return exit code 1 when the readiness score is below this value.",
     )
+    parser.add_argument(
+        "--fail-on-security",
+        action="store_true",
+        help="Return exit code 1 when a supply-chain security check fails.",
+    )
     args = parser.parse_args(argv)
 
     report = analyze_repository(args.path)
@@ -209,4 +318,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(_to_jsonable(report), indent=2, sort_keys=True))
     else:
         print(format_text_report(report), end="")
-    return 1 if report.score < max(0, args.min_score) else 0
+    score_failed = report.score < max(0, args.min_score)
+    security_failed = args.fail_on_security and any(
+        not check.present for check in report.security_checks.values()
+    )
+    return 1 if score_failed or security_failed else 0
