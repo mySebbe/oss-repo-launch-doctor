@@ -6,7 +6,9 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+- Added supply-chain checks for immutable GitHub Action references, explicit workflow permissions,
+  and Dependabot coverage.
+- Added `--fail-on-security` for CI enforcement without changing the historical readiness score.
 
 ## [0.1.2] - 2026-07-06
 
